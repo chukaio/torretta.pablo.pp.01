@@ -1,4 +1,8 @@
 <?php
+
+use \Firebase\JWT\JWT;
+use \Firebase\JWT\SignatureInvalidException;
+
 class Usuario
 {
     //Atributos
@@ -7,7 +11,7 @@ class Usuario
     private $_foto;
 
     //Constructor
-    public function __construct($email, $clave, $foto)
+    public function __construct($email, $clave, $foto=null)
     {
         $this->_email = $email;
         $this->_clave = $clave;
@@ -35,38 +39,128 @@ class Usuario
 
     public function __toString()
     {
-        return "Email: ".$this->_clave.", CLave: ".$this->_clave.", Foto: ".$this->_foto."<br>";
+        return "Email: " . $this->_email . ", Clave: " . $this->_clave . ", Foto: " . $this->_foto . "<br>";
     }
 
-    private function validateEmail(){
+    private function validateEmail()
+    {
         $flag = false;
-        $email=$this->_email;
+        $email = $this->_email;
 
-        if($email!="" && strlen($email)>6){
+        if ($email != "" && strlen($email) > 6) {
             $flag = true;
         }
 
         return $flag;
     }
 
-    private function validatePassword(){
+    private function validatePassword()
+    {
         $flag = false;
-        $clave=$this->_clave;
+        $clave = $this->_clave;
 
-        if(strlen($clave)>7 && strlen($clave)<29){
+        if (strlen($clave) > 7 && strlen($clave) < 29) {
             $flag = true;
         }
 
         return $flag;
     }
 
-    public function validateUser(){
-        if($this!=null){
+    public function validateUser()
+    {
+        if ($this != null) {
             return $this->validateEmail() && $this->validatePassword();
         }
     }
 
-    public function setPhotoName(){
+    public function setPhotoName()
+    {
+        if ($this != null) {
+            $foto = $this->_foto;
+            $name=explode(".",$foto);
+            $extension = pathinfo($foto, PATHINFO_EXTENSION);
+            $this->_foto=$name[0]."_".date("H-i-s").".".$extension;
+        }        
+    }
 
+    public static function movePhoto($source, $destination)
+    {
+        return move_uploaded_file($source, $destination);
+    }
+
+    private function setPasswordToJWT()
+    {
+        $keyJWT = "pro3-parcial";
+        $payload = array(
+            "clave" => $this->_clave,
+        );
+
+        return JWT::encode($payload, $keyJWT); 
+    }
+
+    private function toJson()
+    {
+        $flag = new stdClass();
+        if($this != null)
+        {
+            $flag->email = $this->_email;
+            $flag->clave = $this->setPasswordToJWT();
+            $flag->foto = $this->_foto;
+        }
+        return json_encode($flag);
+    }
+
+    public function saveFile() : bool
+    {
+        $path = "./archivos/users.json";
+        $flag = false;
+        $fileStream = fopen($path,"a");
+
+        if($fileStream != false) 
+        {
+            if(fwrite($fileStream, $this->toJson()."\r\n")) {
+                $flag = true;
+            }
+            fclose($fileStream); 
+        }
+
+        return $flag;
+    }
+
+    public static function getAllUsers()
+    {
+        $listUsers = array();
+        $path = "./archivos/users.json";
+
+        if(file_exists($path)) { 
+            $fileStream = fopen($path, "r");
+            if($fileStream != false) {
+                while(!feof($fileStream)) {
+                    $linea = trim(fgets($fileStream)); 
+                    if($linea != "") 
+                    { 
+                        $auxJWT = json_decode($linea);
+                        $objAux = new Usuario($auxJWT->email, $auxJWT->clave, $auxJWT->foto);
+                        array_push($listUsers, $objAux);  
+                    }
+                }
+                fclose($fileStream);
+            }
+        }
+        return $listUsers;
+    }
+
+    public function getUser()
+    {
+        $email = $this->_email;
+        $tokenJWT = $this->setPasswordToJWT();
+        $listUsers = Usuario::getAllUsers();
+        
+        foreach($listUsers as $aux){
+            if($aux->_email == $email && $aux->_clave == $tokenJWT){
+                
+                return $aux;
+            } 
+        }
     }
 }
